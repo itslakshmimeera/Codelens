@@ -220,7 +220,7 @@ def parse_python_code(content: str) -> ParseResult:
 # ---------------------------------------------------------------------------
 
 RE_JS_IMPORT = re.compile(
-    r"""import\s+(?:(?:\*\s+as\s+(\w+)|([\w$]+)|\{([^}]+)\})\s+from\s+)?['"]([^'"]+)['"]""",
+    r"""(?:^|\n)\s*import\s+(?:(.*?)\s+from\s+)?['"]([^'"]+)['"]""",
     re.MULTILINE,
 )
 RE_JS_REQUIRE = re.compile(
@@ -278,16 +278,18 @@ def parse_js_ts_code(content: str, language: str) -> ParseResult:
     # 1. Imports
     for match in RE_JS_IMPORT.finditer(content):
         line_num = content[: match.start()].count("\n") + 1
-        star_import, default_import, named_imports, module_path = match.groups()
+        specifier, module_path = match.groups()
         sym_list = []
-        if default_import:
-            sym_list.append(default_import.strip())
-        if star_import:
-            sym_list.append(star_import.strip())
-        if named_imports:
-            sym_list.extend(
-                [s.strip().split(" as ")[0].strip() for s in named_imports.split(",") if s.strip()]
-            )
+        if specifier:
+            raw_tokens = specifier.replace("{", "").replace("}", "").split(",")
+            for tok in raw_tokens:
+                tok = tok.strip()
+                if tok.startswith("* as "):
+                    tok = tok[5:].strip()
+                if " as " in tok:
+                    tok = tok.split(" as ")[0].strip()
+                if tok and re.match(r"^[A-Za-z0-9_$]+$", tok):
+                    sym_list.append(tok)
 
         is_rel = module_path.startswith(".")
         imports.append(
